@@ -23,11 +23,16 @@
 <?php
     require_once('../config.php');
     $denied = isset($_GET['denied']);
+    $bypass = isset($_GET['bypass']) && $_GET['bypass'] == 'authN' && $log_debug;
     $oauURL = OAUTH_AUTHORIZATION_URL
             . '?client_id=' . OAUTH_CLIENT_ID
             . '&response_type=code&scope=/read-limited%20/activities/update'
             . '&redirect_uri=' . OAUTH_REDIRECT_URI;
-    $aladin = $sp_url . '?institution=au&url=' . urlencode($oauURL);
+    if ($bypass) {
+        $aladin = $oauURL;
+    } else {
+        $aladin = $sp_url . '?institution=au&url=' . urlencode($oauURL);
+    }
 ?>
 
     <div class="container-narrow">

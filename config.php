@@ -4,7 +4,8 @@
  */
 
 // Local app configuration
-$log_debug = true; // debug/error logging in apache2 error.log
+$log_debug = true;  // debug/error logging in apache2 error.log
+                    // also, allow bypass=authN, NOT IN PRODUCTION!
 $JSONDB = '../db.json';
 
 # Use response scope to display human-readable authorizations
@@ -17,11 +18,12 @@ $scope_desc['/person/update'] = "Add or update your personal information";
 $home = "https://dra.american.edu/orcid/";
 $info = "https://orcid.org";
 $repo = "http://dra.american.edu/audra-ir";
+#$repo = "http://auislandora-dev/audra-ir";
 $docs = "https://docs.google.com/document/d/1HygRQ6hqoElILQvGjxkgZ4cSS_Y4B4vbx59Ex0ApFB0/edit?usp=sharing";
 
 # Service Provider endpoint
-#$sp_url = "https://aladin-sp.wrlc.org/simplesaml/wrlcauth/orcidlogin.php";
-$sp_url = "https://aladin-tst.wrlc.org/simplesaml/wrlcauth/orcidlogin.php";
+$sp_url = "https://aladin-sp.wrlc.org/simplesaml/wrlcauth/orcidlogin.php";
+#$sp_url = "https://aladin-tst.wrlc.org/simplesaml/wrlcauth/orcidlogin.php";
 
 
 // ORCID API CREDENTIALS
