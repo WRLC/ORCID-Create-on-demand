@@ -22,6 +22,8 @@
 
 <?php
     require_once('../config.php');
+    require_once('../include/jsonapi.php');
+    require_once('../include/orcidinfo.php');
 
     if ($log_debug) {
         error_log( 'ORCID DEBUG: REQUEST ' . $_SERVER["REQUEST_URI"] );
@@ -37,9 +39,18 @@
     } else if (isset($_GET['code'])) {
         $code = $_GET['code'];
 
-        if ($log_debug) {
-            error_log( "ORCID DEBUG: Auth code $code received by OAuth Client ".OAUTH_CLIENT_ID );
+        if (isset($_GET['state'])) {
+            $state = $_GET['state'];
+        } else {
+            $state = '';
         }
+
+        if ($log_debug) {
+            error_log( "ORCID DEBUG: Auth code $code for '$state' received by OAuth Client ".OAUTH_CLIENT_ID );
+        }
+
+        // Initialize OAUTH cURL session
+        $ch = getCurlSession( OAUTH_TOKEN_URL );
 
         // Build request parameter string
         $params = "client_id=" . OAUTH_CLIENT_ID
@@ -47,81 +58,93 @@
                 . "&grant_type=authorization_code&code=" . $code
                 . "&redirect_uri=" . OAUTH_REDIRECT_URI;
 
-        // Initialize cURL session
-        $ch = curl_init();
-
-        // Set cURL options
-        curl_setopt($ch, CURLOPT_URL, OAUTH_TOKEN_URL);
+        // Set OAUTH cURL options
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Accept: application/json'));
         curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
         // Turn off SSL certificate check for testing - remove this for production version!
         //curl_setopt ($ch, CURLOPT_SSL_VERIFYHOST, 0);
-        // Turn off SSL certificate check for testing - remove this for production version!
         //curl_setopt ($ch, CURLOPT_SSL_VERIFYPEER, 0);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); 
-        curl_setopt( $ch, CURLOPT_HEADER, TRUE );
 
-        // Execute cURL command
-        if ($log_debug) {
-            error_log( "ORCID DEBUG: POST ".OAUTH_TOKEN_URL."?$params" );
-        }
-        $result = curl_exec($ch);
-        list ($hdr, $body) = explode( "\r\n\r\n", $result, 2 );
-        $code = curl_getinfo( $ch, CURLINFO_HTTP_CODE );
+        // Execute OAUTH cURL command
+        $log_debug? error_log( "ORCID DEBUG: POST ".OAUTH_TOKEN_URL."?$params" ) : true;
+        list ($code, $body) = sendCurlRequest( $ch, $params );
+        $log_debug? error_log( "ORCID DEBUG: RESPONSE ($code) $body" ) : true;
 
-        # get the HTTP response code based on cURL error or API response code
-        $errno = curl_errno( $ch );
-        if ($errno) {
-            $message = curl_error( $ch ) . " ($errno)";
-            error_log( "ORCID ERROR: $message" );
-            $body = '{"status":500,"error":"'. $message . '"}';
-            echo "--- AUTHORIZATION FAILED: $message";
-        }
-
-        if ($log_debug) {
-            error_log( "ORCID DEBUG: RESPONSE ($code) $body" );
-        }
+        // Close OAUTH cURL session
+        curl_close($ch);
 
         if ($code == 200) {
             // Transform cURL response from json string to php array
-            $response = json_decode($body, true);
-            # TBD: check for JSON decode error?
+            $json_array = json_decode($body, true);
+            if (is_null( $json_array )) {
+                list ($code, $body) = jsonError( json_last_error() );
+            }
+
+            # save response fields for building our response page
+            $oname = $json_array['name'];
+            $orcid = $json_array['orcid'];
+            $token = $json_array['access_token'];
 
             # Use response scope to display human-readable authorizations
             $scope_list = '<ul class="list-group">';
-            $scopes = explode(" ", $response['scope']);
+            $scopes = explode(" ", $json_array['scope']);
             foreach ($scopes as $scope) {
                 $scope_list .= '<li class="list-group-item">'.$scope_desc[$scope].'</li>';
             }
             $scope_list .= "</ul>\n";
 
-            # For now, store responses in a json file
-            if ($json = file_get_contents( $JSONDB )) {
-                $dbarray = json_decode( $json );
-                if (is_null( $dbarray )) {
-                    $message = "$JSONDB decode error (".json_last_error().")";
-                    error_log( "ORCID ERROR: $message" );
-                    echo "--- AUTHSTORE FAILED: $message";
-                } else {
-                    # update $JSONDB
-                    $dbarray->{$response['orcid']} = $response;
-                    if (! file_put_contents( $JSONDB, json_encode( $dbarray, JSON_PRETTY_PRINT )."\n" ))
-                    {
-                        $message = "$JSONDB write error (".json_last_error().")";
-                        error_log( "ORCID ERROR: $message" );
-                        echo "--- AUTHSTORE FAILED: $message";
+            # Store authZ data in a json database
+            // Initialize a new cURL session
+            $ch = getCurlSession( "$jsondb/$orcid" );
+
+            // Set cURL options for jsondb
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Content-Type: application/json',
+                'Content-Length: ' . strlen($body))
+            );
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+
+            // execute cURL command to store authZ info in json db
+            $log_debug? error_log( "ORCID DEBUG: PUT $jsondb/$orcid?$body" ) : true;
+            list ($code, $body) = sendCurlRequest( $ch, $body );
+            $log_debug? error_log( "ORCID DEBUG: RESPONSE ($code) $body" ) : true;
+
+            if ($code == 200) {
+                list ($code, $mads) = getOrcidInfo( $orcid, $token, $state );
+                if ($code == 200) {
+                    if ($log_debug) {
+                        $time = @date('d-M-Y:H:i:s');
+                        $logger[$time] = $mads;
+                        $json = json_encode($logger, JSON_PRETTY_PRINT);
+                        if (is_null( $json )) {
+                            list ($code, $msg) = jsonError( json_last_error(), 500,
+                                                            'JSON encode error: ' );
+                            $message = "problem encoding Orcid info -- see error log";
+                            echo "--- WARNING: $message";
+                        } else {
+                            if (!file_put_contents( '../debug.json', $json . "\n", FILE_APPEND )) {
+                                error_log( "ORCID warning: $message" );
+                                $message = "problem writing Orcid info -- see error log";
+                                echo "--- WARNING: $message";
+                            }
+                        }
                     }
-                    $oname = $response['name'];
-                    $orcid = $response['orcid'];
+                    # TBD: create scholar page and citations in Islandora
+                } else {
+                    error_log( "ORCID WARNING: getOrcidInfo returned ($code) $body" );
+                    $message = "problem reading Orcid info -- see error log";
+                    echo "--- WARNING: $message";
                 }
             } else {
-                $message = "$JSONDB read error";
-                error_log( "ORCID ERROR: $message" );
-                echo "--- AUTHSTORE FAILED: $message";
+                error_log( "ORCID ERROR: $jsondb/$orcid returned ($code) $body" );
+                $message = "HTTP Response Code $code";
+                echo "--- DB WRITE FAILED: $message";
             }
+
+            // Close jsondb cURL session
+            curl_close($ch);
+
         } else {
-            error_log( "ORCID ERROR: ".OAUTH_TOKEN_URL." returned $code" );
             $message = "HTTP Response Code $code";
             echo "--- AUTHORIZATION FAILED: $message";
         }
@@ -132,9 +155,6 @@
         error_log( "ORCID WARNING: $message" );
         echo "--- AUTHORIZATION FAILED: $message";
     }
-
-    // Close cURL session
-    curl_close($ch);
 
 ?>
 
@@ -159,7 +179,7 @@
     <?php echo $scope_list; ?>
         </p>
         <br> <br>
-        <p class="lead">Please keep track of your ORCID <img src="icons/orcid_16x16.png" class="logo" width='16' height='16' alt="iD"/> <a href="<?php echo $info.'/'.$orcid; ?>">orcid.org/<?php echo $orcid; ?></a></p>
+        <p class="lead">Please keep track of your ORCID <img src="icons/orcid_16x16.png" class="logo" width='16' height='16' alt="iD"/> <a href="<?php echo "https://orcid.org/$orcid"; ?>">orcid.org/<?php echo $orcid; ?></a></p>
         <p>If you would like to disconnect your iD from the AU Library, please send a request to <a href="mailto:servicedesk@wrlc.org?subject=ORCID+Disconnect+Request:+<?php echo $orcid; ?>">ServiceDesk@wrlc.org</a>.</p>
 <?php } else { ?>
         <p class="lead">Sorry, it appears some problem has ocurred.</p>
