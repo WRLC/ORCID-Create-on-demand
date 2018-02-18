@@ -25,7 +25,7 @@
     require_once('../include/jsonapi.php');
     require_once('../include/orcidinfo.php');
 
-    if ($log_debug) {
+    if (DEBUG_LOG) {
         error_log( 'ORCID DEBUG: REQUEST ' . $_SERVER["REQUEST_URI"] );
     }
 
@@ -45,7 +45,7 @@
             $state = '';
         }
 
-        if ($log_debug) {
+        if (DEBUG_LOG) {
             error_log( "ORCID DEBUG: Auth code $code for '$state' received by OAuth Client ".OAUTH_CLIENT_ID );
         }
 
@@ -66,9 +66,9 @@
         //curl_setopt ($ch, CURLOPT_SSL_VERIFYPEER, 0);
 
         // Execute OAUTH cURL command
-        $log_debug? error_log( "ORCID DEBUG: POST ".OAUTH_TOKEN_URL."?$params" ) : true;
+        DEBUG_LOG? error_log( "ORCID DEBUG: POST ".OAUTH_TOKEN_URL."?$params" ) : true;
         list ($code, $body) = sendCurlRequest( $ch, $params );
-        $log_debug? error_log( "ORCID DEBUG: RESPONSE ($code) $body" ) : true;
+        DEBUG_LOG? error_log( "ORCID DEBUG: RESPONSE ($code) $body" ) : true;
 
         // Close OAUTH cURL session
         curl_close($ch);
@@ -95,7 +95,7 @@
 
             # Store authZ data in a json database
             // Initialize a new cURL session
-            $ch = getCurlSession( "$jsondb/$orcid" );
+            $ch = getCurlSession( JSON_DB."/$orcid" );
 
             // Set cURL options for jsondb
             curl_setopt($ch, CURLOPT_HTTPHEADER, array(
@@ -105,38 +105,59 @@
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
 
             // execute cURL command to store authZ info in json db
-            $log_debug? error_log( "ORCID DEBUG: PUT $jsondb/$orcid?$body" ) : true;
+            DEBUG_LOG? error_log( "ORCID DEBUG: PUT ".JSON_DB."$orcid?$body" ) : true;
             list ($code, $body) = sendCurlRequest( $ch, $body );
-            $log_debug? error_log( "ORCID DEBUG: RESPONSE ($code) $body" ) : true;
+            DEBUG_LOG? error_log( "ORCID DEBUG: RESPONSE ($code) $body" ) : true;
 
             if ($code == 200) {
-                list ($code, $mads) = getOrcidInfo( $orcid, $token, $state );
+                list ($code, $body) = getOrcidInfo( $orcid, $token, $state );
                 if ($code == 200) {
-                    if ($log_debug) {
-                        $time = @date('d-M-Y:H:i:s');
-                        $logger[$time] = $mads;
-                        $json = json_encode($logger, JSON_PRETTY_PRINT);
-                        if (is_null( $json )) {
-                            list ($code, $msg) = jsonError( json_last_error(), 500,
-                                                            'JSON encode error: ' );
-                            $message = "problem encoding Orcid info -- see error log";
-                            echo "--- WARNING: $message";
-                        } else {
+                    # save MADS json to submit to Islandora
+                    $mads = json_encode($body);
+                    if (is_null( $mads )) {
+                        list ($code, $msg) = jsonError( json_last_error(), 500,
+                                                        'JSON encode error: ' );
+                        $message = "problem encoding Orcid info -- see error log";
+                        echo "--- WARNING: $message";
+                    } else {
+                        if (DEBUG_LOG) {
+                            $time = @date('d-M-Y:H:i:s');
+                            $logger[$time] = $body;
+                            $json = json_encode($logger, JSON_PRETTY_PRINT);
                             if (!file_put_contents( '../debug.json', $json . "\n", FILE_APPEND )) {
                                 error_log( "ORCID warning: $message" );
-                                $message = "problem writing Orcid info -- see error log";
+                                $message = "problem logging Orcid info -- see error log";
                                 echo "--- WARNING: $message";
                             }
                         }
+                        # Create/update MADS in Islandora
+                        $update_msg = '';
+                        list ($code, $resp) = putOrcidInfo( $orcid, $mads );
+                        if ($code == 200 or $code == 201) {
+                            if ($resp['resource_uri']) {
+                                $biolink = "<a href=\"{$resp['resource_uri']}\">Faculty Bio</a>";
+                            } else {
+                                $biolink = "Faculty Bio";
+                                error_log( "ORCID WARNING: resource_uri is missing in response" );
+                            }
+                            if (! $resp['result']) {
+                                $update_msg = "A $biolink has been created in AUDRA for your ORCID";
+                            } else if ('pass' == $resp['result']) {
+                                $update_msg = "Your $biolink in AUDRA is already connected to ORCID";
+                            } else if ('updated' == $resp['result']) {
+                                $update_msg = "Your ORCID iD is now connected to your $biolink in AUDRA";
+                            } else {
+                                error_log( "ORCID WARNING: Unknown result indicated: {$resp['result']}" );
+                            }
+                        }
                     }
-                    # TBD: create scholar page and citations in Islandora
                 } else {
                     error_log( "ORCID WARNING: getOrcidInfo returned ($code) $body" );
                     $message = "problem reading Orcid info -- see error log";
                     echo "--- WARNING: $message";
                 }
             } else {
-                error_log( "ORCID ERROR: $jsondb/$orcid returned ($code) $body" );
+                error_log( "ORCID ERROR: ".JSON_DB."$orcid returned ($code) $body" );
                 $message = "HTTP Response Code $code";
                 echo "--- DB WRITE FAILED: $message";
             }
@@ -158,13 +179,18 @@
 
 ?>
 
+<!-- Javascript
+================================================== -->
+<script src="bootstrap/js/jquery.js"></script>
+<script src="bootstrap/js/bootstrap.min.js"></script>
+
 <div class="container">
 
     <div class="masthead">
       <ul class="nav nav-pills pull-right">
         <li><a href="<?php echo $home; ?>">Pilot Home</a></li>
         <li><a href="<?php echo $info; ?>" target="_blank">About ORCID</a></li>
-        <li><a href="<?php echo $repo; ?>">AUDRA-IR</a></li>
+        <li><a href="<?php echo $repo; ?>">AUDRA</a></li>
       </ul>
       <h4 class="muted">ORCID @ American University Library</h4>
     </div>
@@ -172,13 +198,16 @@
     <hr>
 
     <div class="jumbotron">
-        <h2>ORCiD Confirmation</h2>
+        <h2>ORCID Confirmation</h2>
         <br>
 <?php if (isset( $orcid )) { ?>
         <p class="lead">Thanks, <?php echo $oname; ?>. You have authorized AU Library to:
     <?php echo $scope_list; ?>
         </p>
         <br> <br>
+<?php if ($update_msg) {
+    echo '<p class="lead">', $update_msg, '</p>';
+} ?>
         <p class="lead">Please keep track of your ORCID <img src="icons/orcid_16x16.png" class="logo" width='16' height='16' alt="iD"/> <a href="<?php echo "https://orcid.org/$orcid"; ?>">orcid.org/<?php echo $orcid; ?></a></p>
         <p>If you would like to disconnect your iD from the AU Library, please send a request to <a href="mailto:servicedesk@wrlc.org?subject=ORCID+Disconnect+Request:+<?php echo $orcid; ?>">ServiceDesk@wrlc.org</a>.</p>
 <?php } else { ?>
@@ -195,11 +224,5 @@
     </div>
 
 </div> <!-- /container -->
-
-<!-- Javascript
-================================================== -->
-<!-- Placed at the end of the document so the pages load faster -->
-<script src="bootstrap/js/jquery.js"></script>
-<script src="bootstrap/js/bootstrap.min.js"></script>
 
 </body></html>
