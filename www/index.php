@@ -23,9 +23,10 @@
 <?php
     require_once('../config.php');
     $denied = isset($_GET['denied']);
-    $bypass = isset($_GET['bypass']) && $_GET['bypass'] == 'authN' && $log_debug;
+    $bypass = isset($_GET['bypass']) && $_GET['bypass'] == 'authN' && DEBUG_LOG;
+    $state = ($bypass && isset($_GET['state']) ? "&state={$_GET['state']}" : '');
     $oauURL = OAUTH_AUTHORIZATION_URL
-            . '?client_id=' . OAUTH_CLIENT_ID
+            . '?client_id=' . OAUTH_CLIENT_ID . $state
             . '&response_type=code&scope=/read-limited%20/activities/update'
             . '&redirect_uri=' . OAUTH_REDIRECT_URI;
     if ($bypass) {
@@ -41,7 +42,7 @@
         <ul class="nav nav-pills pull-right">
           <li class="active"><a href="<?php echo $home; ?>">Pilot Home</a></li>
           <li><a href="<?php echo $info; ?>" target="_blank">About ORCID</a></li>
-          <li><a href="<?php echo $repo;?>">AUDRA-IR</a></li>
+          <li><a href="<?php echo $repo;?>">AUDRA</a></li>
         </ul>
         <h4 class="muted">ORCID @ American University Library</h4>
       </div>
@@ -58,12 +59,12 @@
         <p class="lead">ORCID iDs are used by publishers, funders, associations and other organizations to make sure your work is correctly attributed to you. Connecting your iD to the AU Library provides added benefits including:</p>
         <table class="table">
         <tr>
-            <td><strong>Library Profile Update</strong></td>
-            <td>Matches publications by your iD, eliminating the need for you to confirm that each publication is yours</td>
+            <td><strong>Faculty Bio Update</strong></td>
+            <td>Your ORCID iD will be added to your Faculty Bio in the AU Digital Research Archive (AUDRA). Citations for works you have in your ORCID record will be copied into AUDRA and matched by your ORCID iD.</td>
         </tr>
         <tr>
             <td><strong>Repository Services</strong></td>
-            <td>When depositing articles and datasets into the Digital Research Archive, we will automatically add them to your ORCID record, making it easier for you to make them available to other organizations and services</td>
+            <td>When depositing articles and datasets in AUDRA, we will automatically add them to your ORCID record, making it easier for you to make them available to other organizations and services.</td>
         </tr>
         </table>
         <p class="lead">To do this, the AU Library needs your permission.</p>

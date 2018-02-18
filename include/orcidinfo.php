@@ -1,4 +1,5 @@
 <?php
+
 /*
  * return scholar info from ORCID record in MADS-like JSON document
  * https://www.loc.gov/standards/mads/mads-doc.html
@@ -21,10 +22,15 @@ function getOrcidInfo( $orcid, $access_token, $email_id ) {
     if ($code == 200) {
         // Transform cURL response from json string to php array
         $resp = json_decode($body, true);
+        if (is_null( $resp )) {
+            return jsonError( json_last_error() );
+        }
         $mads['identifier']['u1'] = $orcid;
         $mads['identifier']['netid'] = $email_id;
         $mads['authority']['name']['given'] = $resp['person']['name']['given-names']['value'];
         $mads['authority']['name']['family']= $resp['person']['name']['family-name']['value'];
+        $title = $resp['person']['name']['given-names']['value'] . ' '
+                .$resp['person']['name']['family-name']['value'];
         # get institutional email address
         if (isset( $resp['person']['emails']['email'] )) {
             foreach ($resp['person']['emails']['email'] as $email) {
@@ -41,6 +47,7 @@ function getOrcidInfo( $orcid, $access_token, $email_id ) {
                 {
                     if (isset( $org['department-name'] )) {
                         $mads['affiliation']['organization'] = $org['department-name'];
+                        $title .= ' (' . $org['department-name'] . ')';
                     }
                     if (isset( $org['role-title'] )) {
                         $mads['affiliation']['position'] = $org['role-title'];
@@ -48,6 +55,8 @@ function getOrcidInfo( $orcid, $access_token, $email_id ) {
                 }
             }
         }
+        # set display name
+        $mads['authority']['titleInfo']['title']= $title;
         # get any public URLs in ORCID record
         if (isset( $resp['person']['researcher-urls']['researcher-url'] )) {
             foreach ($resp['person']['researcher-urls']['researcher-url'] as $url) {
@@ -66,12 +75,13 @@ function getOrcidInfo( $orcid, $access_token, $email_id ) {
         $work_codes = '';
         if (isset( $resp['activities-summary']['works']['group'] )) {
             foreach ($resp['activities-summary']['works']['group'] as $work) {
-                if (isset( $work['work-summary'] )) {
-                    foreach ($work['work-summary'] as $cite) {
-                        # TBD: also filter on 'type'??
-                        if ($cite['visibility'] == 'PUBLIC') {
-                            $work_codes .= ($work_codes? ','.$cite['put-code'] : $cite['put-code']);
-                        }
+                if (isset( $work['work-summary'][0] )) {
+                    # $work['work-summary'] is an array of descriptions from different sources
+                    # if more than one, we just use the first one
+                    $cite = $work['work-summary'][0];
+                    if ($cite['visibility'] == 'PUBLIC') {
+                        # TBD: also filter on 'type'?? what about "preferred" source?
+                        $work_codes .= ($work_codes? ','.$cite['put-code'] : $cite['put-code']);
                     }
                 }
             }
@@ -87,4 +97,39 @@ function getOrcidInfo( $orcid, $access_token, $email_id ) {
         return array ($code, $body);
     }
 }
+
+/*
+ * submit ORCID scholar info to IR to create 
+ * scholar page and citations in Islandora
+ */
+function putOrcidInfo( $orcid, $mads ) {
+    # Create/update MADS in Islandora
+    // get a curl session handle
+    $ch = getCurlSession( MADS_DB."/$orcid" );
+
+    // Set cURL options for madsdb
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+        'Content-Type: application/json',
+        'Content-Length: ' . strlen($mads))
+    );
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+
+    // execute cURL command to update/create MADS record in Islandora
+    DEBUG_LOG? error_log( "ORCID DEBUG: PUT ".MADS_DB."/$orcid?$mads" ) : true;
+    list ($code, $body) = sendCurlRequest( $ch, $mads );
+    DEBUG_LOG? error_log( "ORCID DEBUG: RESPONSE ($code) $body" ) : true;
+
+    if ($code == 200 or $code == 201) {
+        $json_array = json_decode($body, true);
+        if (is_null( $json_array )) {
+            return jsonError( json_last_error() );
+        } else {
+            return array ($code, $json_array);
+        }
+    } else {
+        error_log( "HTTP Response Code $code" );
+        return array ($code, $body);
+    }
+}
+
 ?>

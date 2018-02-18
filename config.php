@@ -4,11 +4,13 @@
  */
 
 // Local app configuration
-$log_debug = true;  // debug/error logging in apache2 error.log
-                    // also, allow bypass=authN, NOT IN PRODUCTION!
+define('DEBUG_LOG', true);  // debug/error logging in apache2 error.log
+                            // also, allow bypass=authN, NOT IN PRODUCTION!
 
 # service endpoint for storing ORCID authN access information
-$jsondb = 'http://ops.wrlc.org:8181/api/researchers';
+define('JSON_DB', 'http://ops.wrlc.org:8181/api/researchers');
+# service endpoint for updating researcher info in Islandora
+define('MADS_DB', 'http://ops.wrlc.org:8181/api/islandora');
 
 # Use response scope to display human-readable authorizations
 $scope_desc['/authenticate'] = "Get your ORCID iD";
@@ -23,8 +25,8 @@ define('ORG_IDENTIFIER', 8363);
 # web page navigation
 $home = "https://dra.american.edu/orcid/";
 $info = "http://subjectguides.library.american.edu/ORCID";
-$repo = "http://dra.american.edu/audra-ir";
-#$repo = "http://auislandora-dev/audra-ir";
+#$repo = "http://dra.american.edu/audra-ir";
+$repo = "https://auislandora-dev.wrlc.org/audra-ir";
 $docs = "https://docs.google.com/document/d/1HygRQ6hqoElILQvGjxkgZ4cSS_Y4B4vbx59Ex0ApFB0/edit?usp=sharing";
 
 # Service Provider endpoint
