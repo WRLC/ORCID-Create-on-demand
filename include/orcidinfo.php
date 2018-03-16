@@ -41,6 +41,10 @@ function getOrcidInfo( $orcid, $access_token, $email_id ) {
         }
         # get institutional department / title
         if (isset( $resp['activities-summary']['employments']['employment-summary'] )) {
+            # if this function is going to be used in production, then
+            # need to check the employment period and use only the role-title &
+            # department-name associated with a current employment (ie no end date) 
+            # https://github.com/WRLC/ORCID-Create-on-demand/issues/18
             foreach ($resp['activities-summary']['employments']['employment-summary'] as $org) {
                 if ($org['organization']['disambiguated-organization']
                         ['disambiguated-organization-identifier'] == ORG_IDENTIFIER)
