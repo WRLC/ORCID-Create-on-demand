@@ -4,13 +4,16 @@
  */
 
 // Local app configuration
-define('DEBUG_LOG', true);  // debug/error logging in apache2 error.log
-                            // also, allow bypass=authN, NOT IN PRODUCTION!
+define('DEBUG_LOG', false);
+#define('DEBUG_LOG', true);  // debug/error logging in web server error.log
+                            // also, allows bypass=authN, NOT IN PRODUCTION!
 
 # service endpoint for storing ORCID authN access information
-define('JSON_DB', 'http://ops.wrlc.org:8181/api/researchers');
+define('JSON_DB', 'http://api.wrlc.org:8181/api/researchers');
 # service endpoint for updating researcher info in Islandora
-define('MADS_DB', 'http://ops.wrlc.org:8181/api/islandora');
+# note: code to update MADS_DB has been removed in master branch
+#       see audra-integration-pilot branch for that stuff
+#define('MADS_DB', 'http://api.wrlc.org:8181/api/islandora');
 
 # Use response scope to display human-readable authorizations
 $scope_desc['/authenticate'] = "Get your ORCID iD";
@@ -19,19 +22,16 @@ $scope_desc['/activities/update'] = "Add or update your research activities";
 $scope_desc['/person/update'] = "Add or update your personal information";
 
 # Orcid member info
-define('ORG_SCOPE', '@american.edu');
-define('ORG_IDENTIFIER', 8363);
+# note: code to create MADS from Orcid member info has been removed
+#       see audra-integration-pilot branch for that stuff
+#define('ORG_SCOPE', '@american.edu');
+#define('ORG_IDENTIFIER', 8363);
 
 # web page navigation
-$home = "https://dra.american.edu/orcid/";
-$info = "http://subjectguides.library.american.edu/ORCID";
-#$repo = "http://dra.american.edu/audra-ir";
-$repo = "https://auislandora-dev.wrlc.org/audra-ir";
-$docs = "https://docs.google.com/document/d/1HygRQ6hqoElILQvGjxkgZ4cSS_Y4B4vbx59Ex0ApFB0/edit?usp=sharing";
+$home = "https://www.american.edu/library/services/orcid.cfm";
 
 # Service Provider endpoint
 $sp_url = "https://aladin-sp.wrlc.org/simplesaml/wrlcauth/orcidlogin.php";
-#$sp_url = "https://aladin-tst.wrlc.org/simplesaml/wrlcauth/orcidlogin.php";
 
 // ORCID API CREDENTIALS
 ////////////////////////////////////////////////////////////////////////

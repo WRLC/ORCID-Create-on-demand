@@ -23,17 +23,17 @@
 <?php
     require_once('../config.php');
     require_once('../include/jsonapi.php');
-    require_once('../include/orcidinfo.php');
 
     if (DEBUG_LOG) {
         error_log( 'ORCID DEBUG: REQUEST ' . $_SERVER["REQUEST_URI"] );
     }
 
-    // if user denies authorization send them to that page
+    $denied = false;
+
+    // TBD: send user to a 'denied' page at home institution?
     if (isset($_GET['error']) && $_GET['error'] == 'access_denied') {
         # error=access_denied&error_description=User%20denied%20access
-        header( "Location: $home?denied" );
-        exit;
+        $denied = true;
 
     // If an authorization code exists, fetch the access token
     } else if (isset($_GET['code'])) {
@@ -110,54 +110,9 @@
             DEBUG_LOG? error_log( "ORCID DEBUG: RESPONSE ($code) $body" ) : true;
 
             if ($code == 200) {
-                list ($code, $body) = getOrcidInfo( $orcid, $token, $state );
-                if ($code == 200) {
-                    # save MADS json to submit to Islandora
-                    $mads = json_encode($body);
-                    if (is_null( $mads )) {
-                        list ($code, $msg) = jsonError( json_last_error(), 500,
-                                                        'JSON encode error: ' );
-                        $message = "problem encoding Orcid info -- see error log";
-                        echo "--- WARNING: $message";
-                    } else {
-                        if (DEBUG_LOG) {
-                            $time = @date('d-M-Y:H:i:s');
-                            $logger[$time] = $body;
-                            $json = json_encode($logger, JSON_PRETTY_PRINT);
-                            if (!file_put_contents( '../debug.json', $json . "\n", FILE_APPEND )) {
-                                error_log( "ORCID warning: $message" );
-                                $message = "problem logging Orcid info -- see error log";
-                                echo "--- WARNING: $message";
-                            }
-                        }
-                        # Create/update MADS in Islandora
-                        $update_msg = '';
-                        list ($code, $resp) = putOrcidInfo( $orcid, $mads );
-                        if ($code == 200 or $code == 201) {
-                            if ($resp['resource_uri']) {
-                                $biolink = "<a href=\"{$resp['resource_uri']}\">Faculty Bio</a>";
-                            } else {
-                                $biolink = "Faculty Bio";
-                                error_log( "ORCID WARNING: resource_uri is missing in response" );
-                            }
-                            if (! $resp['result']) {
-                                $update_msg = "A $biolink has been created in AUDRA for your ORCID";
-                            } else if ('pass' == $resp['result']) {
-                                $update_msg = "Your $biolink in AUDRA is already connected to ORCID";
-                            } else if ('updated' == $resp['result']) {
-                                $update_msg = "Your ORCID iD is now connected to your $biolink in AUDRA";
-                            } else {
-                                error_log( "ORCID WARNING: Unknown result indicated: {$resp['result']}" );
-                            }
-                        }
-                    }
-                } else {
-                    error_log( "ORCID WARNING: getOrcidInfo returned ($code) $body" );
-                    $message = "problem reading Orcid info -- see error log";
-                    echo "--- WARNING: $message";
-                }
+                // removed code to update AUDRA-IR; see branch audra-integration-pilot
             } else {
-                error_log( "ORCID ERROR: ".JSON_DB."$orcid returned ($code) $body" );
+                error_log( "ORCID ERROR: ".JSON_DB."/$orcid returned ($code) $body" );
                 $message = "HTTP Response Code $code";
                 echo "--- DB WRITE FAILED: $message";
             }
@@ -188,39 +143,47 @@
 
     <div class="masthead">
       <ul class="nav nav-pills pull-right">
-        <li><a href="<?php echo $home; ?>">Pilot Home</a></li>
-        <li><a href="<?php echo $info; ?>" target="_blank">About ORCID</a></li>
-        <li><a href="<?php echo $repo; ?>">AUDRA</a></li>
+          <li class="active"><a href="<?php echo $home; ?>">Back to AU Library</a></li>
       </ul>
-      <h4 class="muted">ORCID @ American University Library</h4>
+      <h4 class="muted">Create/Connect your ORCID iD</h4>
     </div>
 
     <hr>
+
+<?php if ($denied) { ?>
+
+    <div class="jumbotron">
+        <div class="alert alert-info"><h3>No authorization has been given</h3></div>
+        <p class="lead">You have not given permission to the AU Library to connect your ORCID iD to your institution.</p>
+        <p class="lead">ORCID iDs are used by publishers, funders, associations and other organizations to make sure your work is correctly attributed to you, to unambiguously differentiate you from other scholars with the same name, and to streamline workflows such as submitting and reviewing journal articles, applying for funding.</p>
+        <p>Return to the <a href="<?php echo $home; ?>">AU Library ORCID page</a> to try again or for additional information.</p>
+      </div>
+
+<?php } else { ?>
 
     <div class="jumbotron">
         <h2>ORCID Confirmation</h2>
         <br>
 <?php if (isset( $orcid )) { ?>
-        <p class="lead">Thanks, <?php echo $oname; ?>. You have authorized AU Library to:
+        <p class="lead">Thanks, <?php echo $oname; ?>. You have authorized the AU Library to:
     <?php echo $scope_list; ?>
         </p>
-        <br> <br>
-<?php if ($update_msg) {
-    echo '<p class="lead">', $update_msg, '</p>';
-} ?>
         <p class="lead">Please keep track of your ORCID <img src="icons/orcid_16x16.png" class="logo" width='16' height='16' alt="iD"/> <a href="<?php echo "https://orcid.org/$orcid"; ?>">orcid.org/<?php echo $orcid; ?></a></p>
-        <p>If you would like to disconnect your iD from the AU Library, please send a request to <a href="mailto:servicedesk@wrlc.org?subject=ORCID+Disconnect+Request:+<?php echo $orcid; ?>">ServiceDesk@wrlc.org</a>.</p>
+        <p>If you would like to disconnect your iD from AU or for additional information, <a href="mailto:skramer@american.edu?subject=ORCID+Connect+Question">Email AU about ORCID</a>.</p>
 <?php } else { ?>
         <p class="lead">Sorry, it appears some problem has ocurred.</p>
         <p>Please report this to <a href="mailto:servicedesk@wrlc.org?subject=ORCID+AUTH+FAILED:+<?php echo urlencode($message); ?>">ServiceDesk@wrlc.org</a>.</p>
 <?php } ?>
     </div>
 
+<?php } ?>
+
     <hr>
 
     <div class="footer">
         <img class="pull-right" src="icons/ORCID_Member_Web_170px.png">
-        <a href="<?php echo $docs; ?>" target="_blank">AU/WRLC ORCID Create-on-demand Pilot Project</a>
+        <a href="https://www.american.edu/">
+        <img style="max-width:50%; max-height:50%" alt="American University Homepage" src="icons/au_logo_h_1.png"></a>
     </div>
 
 </div> <!-- /container -->
