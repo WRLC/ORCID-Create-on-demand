@@ -9,7 +9,8 @@ define('DEBUG_LOG', false);
                             // also, allows bypass=authN, NOT IN PRODUCTION!
 
 # service endpoint for storing ORCID authN access information
-define('JSON_DB', 'http://api.wrlc.org:8181/api/researchers');
+#define('JSON_DB', 'http://api.wrlc.org:8181/api/researchers');
+define('JSON_DB', 'http://webservices.wrlc2k.wrlc.org:8004/api/researchers');
 # service endpoint for updating researcher info in Islandora
 # note: code to update MADS_DB has been removed in master branch
 #       see audra-integration-pilot branch for that stuff
